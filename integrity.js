@@ -1,191 +1,194 @@
-const Type = {};
-Type.re_operator = /^(!==|===|<|<=|>|>=)/;
-Type.operators = {
-	'!==': (a) => (b) => b !== a,
-	'===': (a) => (b) => b === a,
-	'<': (a) => (b) => b < a,
-	'<=': (a) => (b) => b <= a,
-	'>': (a) => (b) => b > a,
-	'>=': (a) => (b) => b >= a,
-};
-Type.operators.positive = Type.operators['>'](0);
-Type.operators.negative = Type.operators['<'](0);
-Type.operators['!0'] = Type.operators['!=='](0);
+'use strict';
 
-Type.types = {};
-Type.types.number = {};
-Type.types.number.is = (value) => typeof value === 'number';
-Type.types.number.number = Object.assign({}, Type.operators, {
-	int: Number.isInteger,
-	'safe int': Number.isSafeInteger,
-	defined: (value) => !Number.isNaN(value),
-	finite: (value) => Number.isFinite(value),
-});
-Type.types.number.re_number = /^(!==|===|<|<=|>|>=) \-?\d+(\.\d+)?$/;
-Type.types.number.allowedFlags = /flags/;
-Type.types.number.getFlags = function(property, def, array) {
-	for (flag of def.flags || []) {
-		if (flag in this.number) {
-			array.push(this.number[flag]);
-		} else {
-			Type.getFlagsNumeric.call(this, property, flag, array);
-		}
-	}
-};
+const Interface = (function() {
+	const $interfaces = {};
+	const $re = {
+		// operator: /^(!==|===|<|<=|>|>=)/,
+		number: /^(!==|===|<|<=|>|>=) \-?\d+(\.\d+)?$/,
+	};
+	const $operators = {
+		'!==': (a) => (b) => b !== a,
+		'===': (a) => (b) => b === a,
+		'<': (a) => (b) => b < a,
+		'<=': (a) => (b) => b <= a,
+		'>': (a) => (b) => b > a,
+		'>=': (a) => (b) => b >= a,
+	};
+	const $types = {};
+	$types.number = {
+		is: (value) => typeof value === 'number',
+		number: Object.assign({}, $operators, {
+			int: Number.isInteger,
+			'safe int': Number.isSafeInteger,
+			defined: (value) => !Number.isNaN(value),
+			finite: (value) => Number.isFinite(value),
+			positive: (b) => b > 0, // convenience...
+			negative: (b) => b < 0, // convenience...
+		}),
+		allowedFlags: /flags/,
+		getFlags(property, def, array) {
+			let flag = '';
+			for (flag of def.flags || []) {
+				if (flag in this.number) {
+					array.push(this.number[flag]);
+				} else {
+					getFlagsNumeric.call(this, property, flag, array);
+				}
+			}
+		},
+	};
+	$types.string = {
+		is: (value) => typeof value === 'string',
+		test: (re) => (value) => re.test(value),
+		number: {
+			'!==': (a) => (b) => b.length !== a,
+			'===': (a) => (b) => b.length === a,
+			'<': (a) => (b) => b.length < a,
+			'<=': (a) => (b) => b.length <= a,
+			'>': (a) => (b) => b.length > a,
+			'>=': (a) => (b) => b.length >= a,
+		},
+		flags: {
+			'!==': $operators['!=='],
+			'===': $operators['==='],
+			defined: (value) => value !== '',
+		},
+		re_number: $re.number,
+		re_flags: /^(!==|===) .+$/,
+		allowedFlags: /length|flags|test/,
+		getFlags(property, def, array) {
+			if (def.test instanceof RegExp) {
+				array.push(this.test(def.test));
+			}
 
-Type.types.string = {};
-Type.types.string.is = (value) => typeof value === 'string';
-Type.types.string.test = (re) => (value) => re.test(value);
-Type.types.string.number = {
-	'!==': (a) => (b) => b.length !== a,
-	'===': (a) => (b) => b.length === a,
-	'<': (a) => (b) => b.length < a,
-	'<=': (a) => (b) => b.length <= a,
-	'>': (a) => (b) => b.length > a,
-	'>=': (a) => (b) => b.length >= a,
-};
-Type.types.string.flags = {
-	'!==': Type.operators['!=='],
-	'===': Type.operators['==='],
-	defined: (value) => value !== '',
-};
-Type.types.string.re_number = Type.types.number.re_number;
-Type.types.string.re_flags = /^(!==|===) .+$/;
-Type.types.string.allowedFlags = /length|flags|test/;
-Type.types.string.getFlags = function(property, def, array) {
-	if (def.test instanceof RegExp) {
-		array.push(this.test(def.test));
-	}
+			let flag = '';
+			for (flag of def.length || []) {
+				getFlagsNumeric.call(this, property, flag, array);
+			}
+			for (flag of def.flags || []) {
+				if (flag in this.flags) {
+					array.push(this.flags[flag]);
+				} else {
+					getFlagsString.call(this, property, flag, array);
+				}
+			}
+		},
+	};
+	$types.boolean = {
+		is: (value) => typeof value === 'boolean',
+		allowedFlags: /^$/,
+	};
 
-	let flag = '';
-	for (flag of def.length || []) {
-		Type.getFlagsNumeric.call(this, property, flag, array);
-	}
-	for (flag of def.flags || []) {
-		if (flag in this.flags) {
-			array.push(this.flags[flag]);
-		} else {
-			Type.getFlagsString.call(this, property, flag, array);
-		}
-	}
-};
-
-Type.types.boolean = {};
-Type.types.boolean.is = (value) => typeof value === 'boolean';
-Type.types.boolean.allowedFlags = /^$/;
-
-Type.interfaces = {};
-
-Type.getTypeCheck = (def) => {
-	if ('type' in def) {
-		return Type.types[def.type].is;
-	}
-
-	return null;
-};
-Type.getFlags = (property, def, array) => {
-	const $ = Type.types[def.type];
-	for (let key in def) {
-		if (key === 'type') {
-			continue;
-		}
-		if (!$.allowedFlags.test(key)) {
-			return console.error(`Property '${property}' contains unknown key '${key}'`);
-		}
-	}
-
-	$.getFlags && $.getFlags(property, def, array);
-};
-Type.getFlagsNumeric = function(property, flag, array) {
-	if (!this.re_number.test(flag)) {
-		return console.error(`spec['${property}'] - invalid flag '${flag}'`);
-	}
-
-	const i = flag.indexOf(' ');
-	array.push(this.number[flag.slice(0, i)](+flag.slice(i + 1)));
-};
-Type.getFlagsString = function(property, flag, array) {
-	if (!this.re_flags.test(flag)) {
-		return console.error(`${property}.flags - invalid flag '${flag}'`);
-	}
-
-	const i = flag.indexOf(' ');
-	array.push(this.flags[flag.slice(0, i)](flag.slice(i + 1)));
-};
-Type.register = function(name, spec) {
-	if (name in Type.interfaces) {
-		return console.error(`Interface '${name}' is already registered.`);
-	}
-
-	const interface = {};
-	let typecheck = null;
-	for (let key in spec) {
-		if (key in interface) {
-			return console.error(`Duplicated definition for '${key}' property.`);
+	function getInterfaceCheck(def) {
+		return ('type' in def) ? $types[def.type].is : null;
+	};
+	function getFlags(property, def, array) {
+		const $ = $types[def.type];
+		for (let key in def) {
+			if (key === 'type') {
+				continue;
+			}
+			if (!$.allowedFlags.test(key)) {
+				return console.error(`Property '${property}' contains unknown key '${key}'`);
+			}
 		}
 
-		typecheck = Type.getTypeCheck(spec[key]);
-		if (typecheck === null) {
-			return console.error(`No 'type' definition for '${key}' property.`);
+		if ($.getFlags) {
+			$.getFlags(property, def, array);
+		}
+	};
+	function getFlagsNumeric(property, flag, array) {
+		if (!$re.number.test(flag)) {
+			return console.error(`spec['${property}'] - invalid flag '${flag}'`);
 		}
 
-		interface[key] = [typecheck];
-		Type.getFlags(key, spec[key], interface[key]);
-	}
-
-	Type.interfaces[name] = Object.freeze(interface);
-};
-Type.test = function(name, subject) {
-	if (!(name in Type.interfaces)) {
-		return console.error(`No such interface '${name}'.`), false;
-	}
-
-	const interface = Type.interfaces[name];
-	let key = '';
-	for (key in interface) {
-		if (!(key in subject)) {
-			return console.error(`Test subject lacks property '${key}'`), false;
+		const i = flag.indexOf(' ');
+		array.push(this.number[flag.slice(0, i)](+flag.slice(i + 1)));
+	};
+	function getFlagsString(property, flag, array) {
+		if (!this.re_flags.test(flag)) {
+			return console.error(`${property}.flags - invalid flag '${flag}'`);
 		}
-	}
-	for (key in subject) {
-		if (!(key in interface)) {
-			return console.error(`Test subject has superfluous property '${key}'`), false;
+
+		const i = flag.indexOf(' ');
+		array.push(this.flags[flag.slice(0, i)](flag.slice(i + 1)));
+	};
+	function register(name, spec) {
+		if (name in $interfaces) {
+			return console.error(`Interface '${name}' is already registered.`);
 		}
-	}
 
-	let bool = true;
-	for (key in interface) {
-		bool = bool && interface[key].every(fn => fn(subject[key]));
-		if (!bool) {
-			console.log('property failed:', key);
-			return false;
+		const $interface = {};
+		let typecheck = null;
+		for (let key in spec) {
+			if (key in $interface) {
+				return console.error(`Duplicated definition for '${key}' property.`);
+			}
+
+			typecheck = getInterfaceCheck(spec[key]);
+			if (typecheck === null) {
+				return console.error(`No 'type' definition for '${key}' property.`);
+			}
+
+			$interface[key] = [typecheck];
+			getFlags(key, spec[key], $interface[key]);
 		}
-	}
 
-	return bool;
-};
+		$interfaces[name] = $interface;
+	};
+	function test(name, subject) {
+		if (!(name in $interfaces)) {
+			return !!console.error(`No such interface '${name}'.`);
+		}
+
+		const $interface = $interfaces[name];
+		let key = '';
+		for (key in subject) {
+			if (!(key in $interface)) {
+				return !!console.error(`Test subject has superfluous property '${key}'`);
+			}
+		}
+		
+		let array = null;
+		let i = 0;
+		let item;
+		for (key in $interface) {
+			if (!(key in subject)) {
+				return !!console.error(`Test subject lacks property '${key}'`);
+			}
+
+			item = subject[key];
+			i = (array = $interface[key]).length;
+			while (--i + 1) {
+				if (!array[i](item)) {
+					return false;
+				}
+			}
+		}
+
+		return true;
+	};
+
+	return { register, test };
+}());
+
+module && (module.exports = Interface);
 
 
-Type.register('name', {
-	id: {
-		type: 'number',
-		flags: ['defined', '!0', '!== 1', '> 4', 'finite'],
-	},
-	name: {
-		type: 'string',
-		flags: ['defined'],
-		length: ['< 2'],
-		test: /ab?c?/,
-	},
-	isHealthy: {
-		type: 'boolean',
-	},
-});
-
-// console.log(Type.interfaces.name);
-
-console.log(Type.test('name', {
-	id: Infinity,
-	name: 'a',
-	isHealthy: false,
-}));
+// console.time('build');
+// Interface.register('name', {
+// 	id: {
+// 		type: 'number',
+// 		flags: ['defined', '!== 0', '!== 1', '> 4', 'finite'],
+// 	},
+// 	name: {
+// 		type: 'string',
+// 		flags: ['defined'],
+// 		length: ['< 2'],
+// 		test: /ab?c?/,
+// 	},
+// 	isHealthy: {
+// 		type: 'boolean',
+// 	},
+// });
+// console.timeEnd('build');
