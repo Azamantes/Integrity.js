@@ -1,7 +1,7 @@
 'use strict';
 
 const Interface = (function() {
-	const $interfaces = {};
+	const $interfaces = Object.create(null);
 	const $re = {
 		// operator: /^(!==|===|<|<=|>|>=)/,
 		number: /^(!==|===|<|<=|>|>=) \-?\d+(\.\d+)?$/,
@@ -14,7 +14,7 @@ const Interface = (function() {
 		'>': (a) => (b) => b > a,
 		'>=': (a) => (b) => b >= a,
 	};
-	const $types = {};
+	const $types = Object.create(null);
 	$types.number = {
 		is: (value) => typeof value === 'number',
 		number: Object.assign({}, $operators, {
@@ -28,7 +28,7 @@ const Interface = (function() {
 		allowedFlags: /flags/,
 		getFlags(property, def, array) {
 			let flag = '';
-			for (flag of def.flags || []) {
+			if (Array.isArray(def.flags)) for (flag of def.flags) {
 				if (flag in this.number) {
 					array.push(this.number[flag]);
 				} else {
@@ -62,10 +62,10 @@ const Interface = (function() {
 			}
 
 			let flag = '';
-			for (flag of def.length || []) {
+			if (Array.isArray(def.length)) for (flag of def.length) {
 				getFlagsNumeric.call(this, property, flag, array);
 			}
-			for (flag of def.flags || []) {
+			if (Array.isArray(def.flags)) for (flag of def.flags) {
 				if (flag in this.flags) {
 					array.push(this.flags[flag]);
 				} else {
